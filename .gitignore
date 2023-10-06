@@ -1,4 +1,7 @@
 opencv
 AGAR*
+build
+CMakeFiles
+img_out
 
 !AGAR_demo.zip

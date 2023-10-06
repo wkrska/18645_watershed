@@ -9,7 +9,7 @@ using namespace cv;
 int main(int argc, char *argv[])
 {
     // Load the image
-    CommandLineParser parser( argc, argv, "{@input | AGAR_representative/higher-resolution/dark/5271.jpg | input image}" );
+    CommandLineParser parser( argc, argv, "{@input | water_coins.jpg | input image}" );
     Mat src = imread( samples::findFile( parser.get<String>( "@input" ) ) );
     if( src.empty() )
     {
