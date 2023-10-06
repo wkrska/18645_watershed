@@ -45,8 +45,8 @@ int main(int argc, char *argv[])
     cvtColor(src, bw, COLOR_BGR2GRAY);
     // cvtColor(imgResult, bw, COLOR_BGR2GRAY);
     t0 = rdtsc();
-    // threshold(bw, bw, 0, 255, THRESH_BINARY_INV | THRESH_OTSU);
-    threshold(bw, bw, 250, 255, THRESH_BINARY_INV);
+    threshold(bw, bw, 0, 255, THRESH_BINARY_INV | THRESH_OTSU);
+    // threshold(bw, bw, 250, 255, THRESH_BINARY_INV);
     t1 = rdtsc();
     imshow("Binary Image", bw);
     printf("Binary Image, Otse time = %llu\n",(t1-t0));
