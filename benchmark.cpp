@@ -3,8 +3,26 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include "immintrin.h"
+
 using namespace std;
 using namespace cv;
+
+// This is NOT correct on your local machine
+#define MAX_FREQ 3.4
+#define BASE_FREQ 2.4
+
+unsigned long long t0, t1;
+
+//timing routine for reading the time stamp counter
+static __inline__ unsigned long long rdtsc(void) {
+  unsigned hi, lo;
+  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
 
 int main(int argc, char *argv[])
 {
@@ -17,106 +35,92 @@ int main(int argc, char *argv[])
         cout << "Usage: " << argv[0] << " <Input image>" << endl;
         return -1;
     }
+
     // Show the source image
     imshow("Source Image", src);
-    // Change the background from white to black, since that will help later to extract
-    // better results during the use of Distance Transform
-    Mat mask;
-    inRange(src, Scalar(255, 255, 255), Scalar(255, 255, 255), mask);
-    src.setTo(Scalar(0, 0, 0), mask);
-    // Show output image
-    imshow("Black Background Image", src);
-    // Create a kernel that we will use to sharpen our image
-    Mat kernel = (Mat_<float>(3,3) <<
-                  1,  1, 1,
-                  1, -8, 1,
-                  1,  1, 1); // an approximation of second derivative, a quite strong kernel
-    // do the laplacian filtering as it is
-    // well, we need to convert everything in something more deeper then CV_8U
-    // because the kernel has some negative values,
-    // and we can expect in general to have a Laplacian image with negative values
-    // BUT a 8bits unsigned int (the one we are working with) can contain values from 0 to 255
-    // so the possible negative number will be truncated
-    Mat imgLaplacian;
-    filter2D(src, imgLaplacian, CV_32F, kernel);
-    Mat sharp;
-    src.convertTo(sharp, CV_32F);
-    Mat imgResult = sharp - imgLaplacian;
-    // convert back to 8bits gray scale
-    imgResult.convertTo(imgResult, CV_8UC3);
-    imgLaplacian.convertTo(imgLaplacian, CV_8UC3);
-    // imshow( "Laplace Filtered Image", imgLaplacian );
-    imshow( "New Sharped Image", imgResult );
+    printf("Source Image\n");
+
     // Create binary image from source image
     Mat bw;
-    cvtColor(imgResult, bw, COLOR_BGR2GRAY);
-    threshold(bw, bw, 40, 255, THRESH_BINARY | THRESH_OTSU);
+    cvtColor(src, bw, COLOR_BGR2GRAY);
+    // cvtColor(imgResult, bw, COLOR_BGR2GRAY);
+    t0 = rdtsc();
+    // threshold(bw, bw, 0, 255, THRESH_BINARY_INV | THRESH_OTSU);
+    threshold(bw, bw, 250, 255, THRESH_BINARY_INV);
+    t1 = rdtsc();
     imshow("Binary Image", bw);
+    printf("Binary Image, Otse time = %llu\n",(t1-t0));
+
+    // Noise removal on BW image
+    Mat opening;
+    Mat kernel3x3 = Mat::ones(3, 3, CV_8U);
+    t0 = rdtsc();
+    morphologyEx(bw, opening, 2, kernel3x3, Point(-1,-1), 2); // 2 is code for opening, see docs
+    // morphologyEx(bw, opening, 3, kernel3x3, Point(-1,-1), 5); // 3 is code for close, see docs
+    t1 = rdtsc();
+    imshow("Opening", opening);
+    printf("Opening Image, 2x dilate/erode time = %llu\n",(t1-t0));
+
+    // Sure background
+    Mat sure_bg;
+    t0 = rdtsc();
+    dilate(opening, sure_bg, kernel3x3, Point(-1,-1), 3);
+    t1 = rdtsc();
+    imshow("Sure BG", sure_bg);
+    printf("BG Image, dilate time = %llu\n",(t1-t0));
+
+    // Find sure foreground
     // Perform the distance transform algorithm
-    Mat dist;
-    distanceTransform(bw, dist, DIST_L2, 3);
-    // Normalize the distance image for range = {0.0, 1.0}
-    // so we can visualize and threshold it
-    normalize(dist, dist, 0, 1.0, NORM_MINMAX);
-    imshow("Distance Transform Image", dist);
-    // Threshold to obtain the peaks
-    // This will be the markers for the foreground objects
-    threshold(dist, dist, 0.4, 1.0, THRESH_BINARY);
-    // Dilate a bit the dist image
-    Mat kernel1 = Mat::ones(3, 3, CV_8U);
-    dilate(dist, dist, kernel1);
-    imshow("Peaks", dist);
-    // Create the CV_8U version of the distance image
-    // It is needed for findContours()
-    Mat dist_8u;
-    dist.convertTo(dist_8u, CV_8U);
-    // Find total markers
-    vector<vector<Point> > contours;
-    findContours(dist_8u, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-    // Create the marker image for the watershed algorithm
-    Mat markers = Mat::zeros(dist.size(), CV_32S);
-    // Draw the foreground markers
-    for (size_t i = 0; i < contours.size(); i++)
-    {
-        drawContours(markers, contours, static_cast<int>(i), Scalar(static_cast<int>(i)+1), -1);
-    }
-    // Draw the background marker
-    circle(markers, Point(5,5), 3, Scalar(255), -1);
-    Mat markers8u;
-    markers.convertTo(markers8u, CV_8U, 10);
-    imshow("Markers", markers8u);
-    // Perform the watershed algorithm
-    watershed(imgResult, markers);
-    Mat mark;
-    markers.convertTo(mark, CV_8U);
-    bitwise_not(mark, mark);
-    //    imshow("Markers_v2", mark); // uncomment this if you want to see how the mark
-    // image looks like at that point
-    // Generate random colors
-    vector<Vec3b> colors;
-    for (size_t i = 0; i < contours.size(); i++)
-    {
-        int b = theRNG().uniform(0, 256);
-        int g = theRNG().uniform(0, 256);
-        int r = theRNG().uniform(0, 256);
-        colors.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
-    }
-    // Create the result image
-    Mat dst = Mat::zeros(markers.size(), CV_8UC3);
-    // Fill labeled objects with random colors
-    for (int i = 0; i < markers.rows; i++)
-    {
-        for (int j = 0; j < markers.cols; j++)
-        {
-            int index = markers.at<int>(i,j);
-            if (index > 0 && index <= static_cast<int>(contours.size()))
-            {
-                dst.at<Vec3b>(i,j) = colors[index-1];
-            }
-        }
-    }
+    Mat dist_transform;
+    Mat sure_fg;
+    t0 = rdtsc();
+    distanceTransform(opening, dist_transform, DIST_L2, 5);
+    t1 = rdtsc();
+    double min, max;
+    minMaxLoc(dist_transform, &min, &max);    
+    threshold(dist_transform, sure_fg, 0.7*max, 255, THRESH_BINARY);
+    imshow("Distance Transform Image", dist_transform/max);
+    printf("Dist Image, dist_transform time = %llu\n",(t1-t0));
+    imshow("Sure FG",sure_fg);
+    printf("FG Image\n");
+
+    // Find unknown region
+    Mat unknown;
+    sure_bg.convertTo(sure_bg, CV_8U);
+    sure_fg.convertTo(sure_fg, CV_8U);
+    subtract(sure_bg,sure_fg,unknown);
+    // imshow("unknown",unknown);
+    printf("Unknown Image\n");
+    
+    // Marker Labling
+    Mat markers;
+    Mat disp_markers;
+    connectedComponents(sure_fg,markers);
+    markers = markers+1;
+    markers.convertTo(disp_markers, CV_8UC1, 1, 0);
+    minMaxLoc(disp_markers, &min, &max); 
+    applyColorMap(disp_markers/max, disp_markers, cv::COLORMAP_JET);
+    imshow("Markers", disp_markers);
+    printf("Markers Image\n");
+
+    // Now, mark the region of unknown with zero
+    Mat mask;
+    inRange(unknown, 255, 255, mask);
+    markers.setTo(0, mask);
+
+    // Watershed
+    watershed(src, markers);
+    Mat mask2;
+    inRange(markers, -1, -1, mask2);
+    src.setTo(Scalar(255, 0, 0), mask2);
+    markers.convertTo(disp_markers, CV_8UC1, 1, 0); 
+    applyColorMap(disp_markers*8, disp_markers, cv::COLORMAP_JET);
+    imshow("Watershed Markers", disp_markers);
+    printf("Watershed Markers\n");
+
     // Visualize the final image
-    imshow("Final Result", dst);
-    waitKey();
+    imshow("Final Result", src);
+    printf("Final Image\n");
+    waitKey(100000);
     return 0;
 }
