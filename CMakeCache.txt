@@ -145,7 +145,7 @@ CMAKE_PROJECT_DESCRIPTION:STATIC=
 CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 
 //Value Computed by CMake
-CMAKE_PROJECT_NAME:STATIC=benchmark
+CMAKE_PROJECT_NAME:STATIC=test
 
 //Path to a program.
 CMAKE_RANLIB:FILEPATH=/usr/bin/ranlib
@@ -220,6 +220,15 @@ benchmark_IS_TOP_LEVEL:STATIC=ON
 
 //Value Computed by CMake
 benchmark_SOURCE_DIR:STATIC=/home/wkrska/Document/18645/18645_watershed
+
+//Value Computed by CMake
+test_BINARY_DIR:STATIC=/home/wkrska/Document/18645/18645_watershed
+
+//Value Computed by CMake
+test_IS_TOP_LEVEL:STATIC=ON
+
+//Value Computed by CMake
+test_SOURCE_DIR:STATIC=/home/wkrska/Document/18645/18645_watershed
 
 
 ########################

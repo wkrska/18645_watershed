@@ -117,41 +117,41 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named benchmark
+# Target rules for targets named test
 
 # Build rule for target.
-benchmark: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 benchmark
-.PHONY : benchmark
+test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test
+.PHONY : test
 
 # fast build rule for target.
-benchmark/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/benchmark.dir/build.make CMakeFiles/benchmark.dir/build
-.PHONY : benchmark/fast
+test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test.dir/build.make CMakeFiles/test.dir/build
+.PHONY : test/fast
 
-benchmark.o: benchmark.cpp.o
-.PHONY : benchmark.o
+test.o: test.cpp.o
+.PHONY : test.o
 
 # target to build an object file
-benchmark.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/benchmark.dir/build.make CMakeFiles/benchmark.dir/benchmark.cpp.o
-.PHONY : benchmark.cpp.o
+test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test.dir/build.make CMakeFiles/test.dir/test.cpp.o
+.PHONY : test.cpp.o
 
-benchmark.i: benchmark.cpp.i
-.PHONY : benchmark.i
+test.i: test.cpp.i
+.PHONY : test.i
 
 # target to preprocess a source file
-benchmark.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/benchmark.dir/build.make CMakeFiles/benchmark.dir/benchmark.cpp.i
-.PHONY : benchmark.cpp.i
+test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test.dir/build.make CMakeFiles/test.dir/test.cpp.i
+.PHONY : test.cpp.i
 
-benchmark.s: benchmark.cpp.s
-.PHONY : benchmark.s
+test.s: test.cpp.s
+.PHONY : test.s
 
 # target to generate assembly for a file
-benchmark.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/benchmark.dir/build.make CMakeFiles/benchmark.dir/benchmark.cpp.s
-.PHONY : benchmark.cpp.s
+test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test.dir/build.make CMakeFiles/test.dir/test.cpp.s
+.PHONY : test.cpp.s
 
 # Help Target
 help:
@@ -161,10 +161,10 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... benchmark"
-	@echo "... benchmark.o"
-	@echo "... benchmark.i"
-	@echo "... benchmark.s"
+	@echo "... test"
+	@echo "... test.o"
+	@echo "... test.i"
+	@echo "... test.s"
 .PHONY : help
 
 
