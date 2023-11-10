@@ -2,20 +2,21 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "immintrin.h"
 
 #include "morph_kernel_2.h"
 
 #define BATCH (4) // the number of SIMD reads per iteration
 #define D_WIDTH (8)
-#define STEP (256/D_WIDTH) // the number of addresses to step for each SIMD read
+#define SIMD_N_ELEM (256/D_WIDTH) // the number of addresses to step for each SIMD read
 
-#define ROWS 8
-#define COLS 2*(256/8)
+#define ROWS 1
+#define COLS (2+3*10)*SIMD_N_ELEM
 
-#define RUNS 1
+#define RUNS 100000000
 #define DEBUG 1
-#define PRINTMAT 1
+#define PRINTMAT 0
 
 #define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
@@ -27,64 +28,121 @@ static __inline__ unsigned long long rdtsc(void) {
   return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
 }
 
-void mat_print(int cols, int rows, int8_t *mat) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("%5d", mat[j+i*cols]);
-        }
-        printf("\n");
-    }
+bool check(int8_t* a, int8_t* b) {
+    bool correct = true;
+    for (int i = 0; i < ROWS*COLS; i++)
+        correct &= (a[i]==b[i]);
+    return correct;
 }
 
 int main(int argc, char** argv) {
-    int8_t *in;
-    int8_t *out, *out2;
+    int8_t *in, *out, *buff;
 
     posix_memalign((void**) &in, 64, ROWS * COLS * sizeof(int8_t));
     posix_memalign((void**) &out, 64, ROWS  * COLS * sizeof(int8_t));
-    posix_memalign((void**) &out2, 64, ROWS  * COLS * sizeof(int8_t));
+    posix_memalign((void**) &buff, 64, ROWS  * COLS * sizeof(int8_t));
 
     // Fill in with data
-    for (int i = 0; i != ROWS*COLS; ++i)  { 
-        #if DEBUG
-        in[i] = i;//((i/(COLS*4)) % 2 == 0) ? ~0 : 0;
-        out[i] = 0;
+    fill: for (int i = 0; i != ROWS*COLS; ++i)  { 
+        #if (DEBUG == 1)
+        int tile_size = 4;
+        // Checker board with tiles of above size
+        in[i] = (((i/(COLS*tile_size)) % 2 == 0) ^ (((i%(COLS))/tile_size) % 2 == 0)) ? 0 : ~0;
+        #elif (DEBUG == 2)
+        in[i] = i;
         #else
         in[i] = ((int8_t) rand())/ ((int8_t) RAND_MAX);
-        out[i] = 0;
         #endif
+
+        out[i] = 0;
+        buff[i] = 0;
     }
+
+    unsigned long long t0, t1;
+    unsigned long long timer;
+
     #if PRINTMAT
-    printf("Input Mat:\n");
+    printf("Unpacked Input:\n");
     mat_print(COLS, ROWS, in);
     printf("\n\n");
     #endif
 
-    pack(COLS,ROWS,in,out);
+    #if 1
+    // Benchmark Horizontal Kernel
+    {
+        timer = ~0;
+        rows: for (int i = 0; i < RUNS; i++) {
+            t0 = rdtsc();
+            rows_kernel(COLS,ROWS,in,out);
+            t1 = rdtsc();
 
-
-
-    // unsigned long long t0, t1;
-    // unsigned long long timer = ~0;
-    // for (int i = 0; i < RUNS; i++) {
-    //     t0 = rdtsc();
-    //     cols_kernel(COLS,ROWS,out,out);
-    //     t1 = rdtsc();
-
-    //     timer = ((t1-t0) < timer) ? t1-t0 : timer;
-    // }
-    // printf("Efficiency: %f\n", (double) (BASE_FREQ*ROWS)/(MAX_FREQ*timer));
+            timer = ((t1-t0) < timer) ? t1-t0 : timer;
+        }
+        printf("Horizontal Efficiency: %f\n", (double) (BASE_FREQ*3/2*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
+    }
+    #endif
 
     #if PRINTMAT
-    printf("Output Mat:\n");
-    mat_print(ROWS*STEP,COLS/STEP,out);
+    printf("Hor. Output:\n");
+    mat_print(COLS, ROWS, out);
+    printf("\n\n");
+    #endif
+
+    #if 0
+    // Benchmark packing
+    timer = ~0;
+    pack: for (int i = 0; i < RUNS; i++) {
+        t0 = rdtsc();
+        pack(COLS,ROWS,out,buff);
+        t1 = rdtsc();
+
+        timer = ((t1-t0) < timer) ? t1-t0 : timer;
+    }
+    printf("Packing Efficiency: %f\n", (double) (BASE_FREQ*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
     #endif
     
-    unpack(COLS, ROWS, out, out2);
+    #if PRINTMAT
+    printf("Packed Input:\n");
+    mat_print(ROWS*SIMD_N_ELEM,COLS/SIMD_N_ELEM, buff);
+    printf("\n\n");
+    #endif
+
+    #if 0
+    // Benchmark Vertical Kernel
+    timer = ~0;
+    cols: for (int i = 0; i < RUNS; i++) {
+        t0 = rdtsc();
+        cols_kernel(COLS,ROWS,buff,buff);
+        t1 = rdtsc();
+
+        timer = ((t1-t0) < timer) ? t1-t0 : timer;
+    }
+    printf("Vertical Efficiency: %f\n", (double) (BASE_FREQ*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
+    #endif
 
     #if PRINTMAT
-    printf("Output Mat 2:\n");
-    mat_print(COLS,ROWS,out2);
+    printf("Packed Output:\n");
+    mat_print(ROWS*SIMD_N_ELEM,COLS/SIMD_N_ELEM,buff);
+    printf("\n\n");
     #endif
     
+    #if 0
+    unpack(COLS, ROWS, buff, out);
+    // Benchmark unpacking
+    timer = ~0;
+    upack: for (int i = 0; i < RUNS; i++) {
+        t0 = rdtsc();
+        unpack(COLS, ROWS, buff, out);
+        t1 = rdtsc();
+
+        timer = ((t1-t0) < timer) ? t1-t0 : timer;
+    }
+    printf("Unpacking Efficiency: %f\n", (double) (BASE_FREQ*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
+    #endif
+
+    #if PRINTMAT
+    printf("Unpacked Output:\n");
+    mat_print(COLS,ROWS,out);
+    printf("\n\n");
+    #endif
 } 

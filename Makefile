@@ -1,6 +1,6 @@
 # SCL = scl enable devtoolset-11
 CC = gcc
-CFLAGS = -mavx -mavx2 -mfma -lm -O3 -std=c99 -w
+CFLAGS = -mavx -mavx2 -mfma -lm -O2 -std=c99 -w
 
 default: all run assemble
 
