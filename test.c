@@ -38,10 +38,11 @@ void mat_print(int cols, int rows, int8_t *mat) {
 
 int main(int argc, char** argv) {
     int8_t *in;
-    int8_t *out;
+    int8_t *out, *out2;
 
     posix_memalign((void**) &in, 64, ROWS * COLS * sizeof(int8_t));
     posix_memalign((void**) &out, 64, ROWS  * COLS * sizeof(int8_t));
+    posix_memalign((void**) &out2, 64, ROWS  * COLS * sizeof(int8_t));
 
     // Fill in with data
     for (int i = 0; i != ROWS*COLS; ++i)  { 
@@ -61,6 +62,8 @@ int main(int argc, char** argv) {
 
     pack(COLS,ROWS,in,out);
 
+
+
     // unsigned long long t0, t1;
     // unsigned long long timer = ~0;
     // for (int i = 0; i < RUNS; i++) {
@@ -76,4 +79,12 @@ int main(int argc, char** argv) {
     printf("Output Mat:\n");
     mat_print(ROWS*STEP,COLS/STEP,out);
     #endif
+    
+    unpack(COLS, ROWS, out, out2);
+
+    #if PRINTMAT
+    printf("Output Mat 2:\n");
+    mat_print(COLS,ROWS,out2);
+    #endif
+    
 } 

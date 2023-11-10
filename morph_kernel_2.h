@@ -1,6 +1,5 @@
 #include <immintrin.h>
 #include <stdint.h>
-// #include functional
 
 #define BATCHES (4) // the number of SIMD reads per iteration
 #define D_WIDTH (8)
@@ -216,7 +215,83 @@ inline void unpack
     int8_t* restrict in,
     int8_t* restrict out
 ) {
-    // TODO
+    inline int addrConv(int rows, int cols, int addr){
+        // Read addr: row*elements in full row + col*elements in SIMD read
+        // Write addr: row*elements in SIMD read + col*elements in full SIMD column
+        int row = (addr/SIMD_N_ELEM) % rows; // output row: divide by SIMD, mod by num rows
+        int col = addr/rows; // output column: each input col is a row, div by row size to find col num, mult by SIMD to find addr, or just divide by num rows
+        return row*SIMD_N_ELEM + col*rows;
+    }
+
+    volatile __m256d ymm0 = _mm256_setzero_pd();
+    volatile __m256d ymm1 = _mm256_setzero_pd();
+    volatile __m256d ymm2 = _mm256_setzero_pd();
+    volatile __m256d ymm3 = _mm256_setzero_pd();
+    volatile __m256d ymm4 = _mm256_setzero_pd();
+    volatile __m256d ymm5 = _mm256_setzero_pd();
+    volatile __m256d ymm6 = _mm256_setzero_pd();
+    volatile __m256d ymm7 = _mm256_setzero_pd();
+    volatile __m256d ymm8 = _mm256_setzero_pd();
+    volatile __m256d ymm9 = _mm256_setzero_pd();
+    volatile __m256d ymm10= _mm256_setzero_pd();
+    volatile __m256d ymm11= _mm256_setzero_pd();
+    volatile __m256d ymm12= _mm256_setzero_pd();
+    volatile __m256d ymm13= _mm256_setzero_pd();
+    volatile __m256d ymm14= _mm256_setzero_pd();
+    volatile __m256d ymm15= _mm256_setzero_pd();
+
+    for (int idx = 0; idx < rows*cols; idx += SIMD_N_ELEM*16) {
+        ymm0 = _mm256_load_pd(in + idx + 0 *SIMD_N_ELEM);
+        ymm1 = _mm256_load_pd(in + idx + 1 *SIMD_N_ELEM);
+        ymm2 = _mm256_load_pd(in + idx + 2 *SIMD_N_ELEM);
+        ymm3 = _mm256_load_pd(in + idx + 3 *SIMD_N_ELEM);
+        ymm4 = _mm256_load_pd(in + idx + 4 *SIMD_N_ELEM);
+        ymm5 = _mm256_load_pd(in + idx + 5 *SIMD_N_ELEM);
+        ymm6 = _mm256_load_pd(in + idx + 6 *SIMD_N_ELEM);
+        ymm7 = _mm256_load_pd(in + idx + 7 *SIMD_N_ELEM);
+        ymm8 = _mm256_load_pd(in + idx + 8 *SIMD_N_ELEM);
+        ymm9 = _mm256_load_pd(in + idx + 9 *SIMD_N_ELEM);
+        ymm10= _mm256_load_pd(in + idx + 10*SIMD_N_ELEM);
+        ymm11= _mm256_load_pd(in + idx + 11*SIMD_N_ELEM);
+        ymm12= _mm256_load_pd(in + idx + 12*SIMD_N_ELEM);
+        ymm13= _mm256_load_pd(in + idx + 13*SIMD_N_ELEM);
+        ymm14= _mm256_load_pd(in + idx + 14*SIMD_N_ELEM);
+        ymm15= _mm256_load_pd(in + idx + 15*SIMD_N_ELEM);
+
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 0 *SIMD_N_ELEM), ymm0 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 1 *SIMD_N_ELEM), ymm1 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 2 *SIMD_N_ELEM), ymm2 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 3 *SIMD_N_ELEM), ymm3 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 4 *SIMD_N_ELEM), ymm4 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 5 *SIMD_N_ELEM), ymm5 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 6 *SIMD_N_ELEM), ymm6 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 7 *SIMD_N_ELEM), ymm7 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 8 *SIMD_N_ELEM), ymm8 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 9 *SIMD_N_ELEM), ymm9 );
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 10*SIMD_N_ELEM), ymm10);
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 11*SIMD_N_ELEM), ymm11);
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 12*SIMD_N_ELEM), ymm12);
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 13*SIMD_N_ELEM), ymm13);
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 14*SIMD_N_ELEM), ymm14);
+        _mm256_store_pd(out + addrConv(rows, cols, idx + 15*SIMD_N_ELEM), ymm15);
+
+        printf("read: %2d\twrite:%2d\n", (idx + 0 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 0 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 1 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 1 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 2 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 2 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 3 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 3 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 4 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 4 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 5 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 5 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 6 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 6 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 7 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 7 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 8 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 8 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 9 *SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 9 *SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 10*SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 10*SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 11*SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 11*SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 12*SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 12*SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 13*SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 13*SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 14*SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 14*SIMD_N_ELEM)/SIMD_N_ELEM);
+        printf("read: %2d\twrite:%2d\n", (idx + 15*SIMD_N_ELEM)/SIMD_N_ELEM, addrConv(rows, cols, idx + 15*SIMD_N_ELEM)/SIMD_N_ELEM);
+    }
 }
 
 /*

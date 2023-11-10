@@ -1,4 +1,4 @@
-SCL = scl enable devtoolset-11
+# SCL = scl enable devtoolset-11
 CC = gcc
 CFLAGS = -mavx -mavx2 -mfma -lm -O3 -std=c99 -w
 
@@ -8,7 +8,7 @@ default: all run assemble
 	$(CC) $(CFLAGS) -c $< -o $@
 
 all: 
-	$(CC) $(CFLAGS) test.c  -o test -march=native
+	$(CC) $(CFLAGS) test.c -o test -march=native
 run:
 	./test
 
