@@ -3,5 +3,6 @@ AGAR*
 build
 CMakeFiles
 img_out
+*.S
 
 !AGAR_demo.zip
