@@ -5,16 +5,16 @@
 #include <stdbool.h>
 #include "immintrin.h"
 
-#include "morph_kernel_2.h"
+#include "morph_kernel.h"
 
 #define BATCH (4) // the number of SIMD reads per iteration
 #define D_WIDTH (8)
 #define SIMD_N_ELEM (256/D_WIDTH) // the number of addresses to step for each SIMD read
 
-#define ROWS 1
-#define COLS (2+3*10)*SIMD_N_ELEM
+#define ROWS 512
+#define COLS 8*SIMD_N_ELEM
 
-#define RUNS 100000000
+#define RUNS 1000000
 #define DEBUG 1
 #define PRINTMAT 0
 
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     printf("\n\n");
     #endif
 
-    #if 1
+    #if 0
     // Benchmark Horizontal Kernel
     {
         timer = ~0;
@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
     printf("\n\n");
     #endif
 
-    #if 0
+    #if 1
     // Benchmark Vertical Kernel
     timer = ~0;
     cols: for (int i = 0; i < RUNS; i++) {
