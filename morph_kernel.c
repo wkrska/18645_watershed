@@ -1,12 +1,21 @@
 #include <immintrin.h>
 #include <stdint.h>
+#include <omp.h>
 
 #define DEBUG 0
 
 #define C_BATCHES (4) // the number of SIMD reads per iteration
-#define R_BATCHES (3) // the number of SIMD reads per iteration
+#define R_BATCHES (8) // the number of SIMD reads per iteration
 #define D_WIDTH (8)
 #define SIMD_N_ELEM (256/D_WIDTH) // the number of addresses to SIMD_N_ELEM for each SIMD read
+
+// Function Prototypes
+void mat_print(int cols, int rows, int8_t *mat);
+inline void cols_kernel(int cols, int rows, int8_t* restrict in, int8_t* restrict out);
+inline void rows_kernel(int cols, int rows,  int8_t* restrict in,  int8_t* restrict out);
+inline void pack(int cols, int rows, int8_t* restrict in, int8_t* restrict out);
+inline void unpack(int cols, int rows, int8_t* restrict in, int8_t* restrict out);
+
 
 void mat_print(int cols, int rows, int8_t *mat) {
     for (int i = 0; i < rows; i++) {
@@ -32,10 +41,15 @@ inline void cols_kernel
     // To store all CARry values
     __m256d CAR0, CAR1, CAR2, CAR3;
 
+    #if DEBUG
+    printf("\n\nDebugging Col Kernel\n\n");
+    #endif
+
     // For all columns
+    // #pragma omp parallel for num_threads(4)
     for (int c = 0; c < cols/SIMD_N_ELEM; c++) {
         // Zero values
-        LD0a = _mm256_setzero_pd();
+        // LD0a = _mm256_setzero_pd();
         LD1a = _mm256_setzero_pd();
         LD2a = _mm256_setzero_pd();
         LD3a = _mm256_setzero_pd();
@@ -66,6 +80,11 @@ inline void cols_kernel
         CAR1 = (__m256d) _mm256_and_si256((__m256i) LD1b, (__m256i) LD0b);
         CAR2 = (__m256d) _mm256_and_si256((__m256i) LD2b, (__m256i) LD1b);
         CAR3 = (__m256d) _mm256_and_si256((__m256i) LD3b, (__m256i) LD2b);
+
+        #if DEBUG
+        printf("c=0, r=0\n");
+        mat_print(rows*SIMD_N_ELEM,cols/SIMD_N_ELEM, out);
+        #endif
 
         // Rows are packed end to end, but first C_BATCHES rows have been pre-processed to start the column. There will be rows/(rows read per itr) iterations
         for (int r = 1; r < rows/C_BATCHES; r+=2) {
@@ -123,6 +142,9 @@ inline void cols_kernel
 
             #if DEBUG
             printf("c=%d, r=%d\n", c, r);
+            // uint8_t buff[rows*cols];
+            // unpack(cols, rows, out, buff);
+            // mat_print(cols,rows, buff);
             mat_print(rows*SIMD_N_ELEM,cols/SIMD_N_ELEM, out);
             #endif
         }
@@ -152,14 +174,18 @@ inline void rows_kernel
     int8_t* restrict in,
     int8_t* restrict out
 ) {
-    volatile __m256d LD0_0, LD1_0, LD2_0, 
-                     LD0_1, LD1_1, LD2_1, 
-                     LD0_2, LD1_2, LD2_2;
-    
-    volatile __m256d ND0_0, ND1_0,
-                     ND0_1, ND1_1,
-                     ND0_2, ND1_2;
+    volatile __m256d R0_0, R1_0,
+                     R0_1, R1_1,
+                     R0_2, R1_2,
+                     R0_3, R1_3,
+                     R0_4, R1_4,
+                     R0_5, R1_5,
+                     R0_6, R1_6,
+                     R0_7, R1_7;
 
+    #if DEBUG
+    printf("\n\nDebugging Row Kernel\n\n");
+    #endif
 
     // shifts "right", element 0 is zeroed
     //  LN0_0 = (__m256d) _mm256_alignr_epi8((__m256i) LN0_0, _mm256_permute2x128_si256((__m256i) LN0_0, (__m256i) LN0_0, _MM_SHUFFLE(0, 0, 2, 0)), 16 - 1);
@@ -167,18 +193,19 @@ inline void rows_kernel
     //  LN0_0 = (__m256d) _mm256_alignr_epi8(_mm256_permute2x128_si256((__m256i) LN0_0, (__m256i) LN0_0, _MM_SHUFFLE(2, 0, 0, 1)), (__m256i) LN0_0, 1);
 
     // For every row
+    // #pragma omp parallel for num_threads(4)
     for (int r = 0; r < rows; r++) {
         // For first SIMD load, need to do slow bit shift
         #if DEBUG
         printf("%d %d\n", r * cols ,r * cols + 1);
         #endif
-        LD0_0 = _mm256_load_pd(in + r * cols); // Aligned load
-        LD1_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + 1); // Unligned load
-        ND0_0 = (__m256d) _mm256_permute2x128_si256((__m256i) LD0_0, (__m256i) LD0_0, _MM_SHUFFLE(0, 0, 2, 0)); // Step 1 of bitshift
-        ND1_0 = (__m256d) _mm256_and_si256((__m256i) LD0_0, (__m256i) LD1_0);
-        ND0_0 = (__m256d) _mm256_alignr_epi8((__m256i) LD0_0, (__m256i) ND0_0, 16 - 1); // Step 2 if bitshift RIGHT
-        ND0_0 = (__m256d) _mm256_and_si256((__m256i) ND0_0, (__m256i) ND1_0);
-        _mm256_store_pd(out + r * cols, ND0_0);
+        R0_5 = _mm256_load_pd(in + r * cols); // Aligned load
+        R1_5 = (__m256d) _mm256_lddqu_si256(in + r * cols + 1); // Unligned load
+        R0_7 = (__m256d) _mm256_permute2x128_si256((__m256i) R0_5, (__m256i) R0_5, _MM_SHUFFLE(0, 0, 2, 0)); // Step 1 of bitshift
+        R1_7 = (__m256d) _mm256_and_si256((__m256i) R0_5, (__m256i) R1_5);
+        R0_7 = (__m256d) _mm256_alignr_epi8((__m256i) R0_5, (__m256i) R0_7, 16 - 1); // Step 2 if bitshift RIGHT
+        R0_7 = (__m256d) _mm256_and_si256((__m256i) R0_7, (__m256i) R1_7);
+        _mm256_store_pd(out + r * cols, R0_7);
 
         #if DEBUG
         printf("first load\n");
@@ -189,89 +216,72 @@ inline void rows_kernel
             // Load first 2 vals, perform and, load next val, perform final and then store
 
             // Itr 1
-            LD0_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
-            LD1_1 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
-            ND0_1 = (__m256d) _mm256_and_si256((__m256i) LD0_1, (__m256i) LD1_1);
-            LD2_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
-            ND1_1 = (__m256d) _mm256_and_si256((__m256i) ND0_1, (__m256i) LD2_1);
-            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, ND1_1);
+            R0_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_0 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_0 = (__m256d) _mm256_and_si256((__m256i) R0_0, (__m256i) R1_0);
+            R1_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_0 = (__m256d) _mm256_and_si256((__m256i) R0_0, (__m256i) R1_0);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_0);
 
             // Itr 2
-            LD0_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 1) * SIMD_N_ELEM - 1);
-            LD1_2 = _mm256_load_pd(in + r * cols + (c + 1) * SIMD_N_ELEM);
-            ND0_2 = (__m256d) _mm256_and_si256((__m256i) LD0_2, (__m256i) LD1_2);
-            LD2_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 1) * SIMD_N_ELEM + 1);
-            ND1_2 = (__m256d) _mm256_and_si256((__m256i) ND0_2, (__m256i) LD2_2);
-            _mm256_store_pd(out + r * cols + (c + 1) * SIMD_N_ELEM, ND1_2);
+            R0_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_1 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_1 = (__m256d) _mm256_and_si256((__m256i) R0_1, (__m256i) R1_1);
+            R1_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_1 = (__m256d) _mm256_and_si256((__m256i) R0_1, (__m256i) R1_1);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_1);
 
             // Itr 3
+            R0_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_2 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_2 = (__m256d) _mm256_and_si256((__m256i) R0_2, (__m256i) R1_2);
+            R1_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_2 = (__m256d) _mm256_and_si256((__m256i) R0_2, (__m256i) R1_2);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_2);
+
+            // Itr 4
+            R0_3 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_3 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_3 = (__m256d) _mm256_and_si256((__m256i) R0_3, (__m256i) R1_3);
+            R1_3 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_3 = (__m256d) _mm256_and_si256((__m256i) R0_3, (__m256i) R1_3);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_3);
+
+            // Itr 5
+            R0_4 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_4 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_4 = (__m256d) _mm256_and_si256((__m256i) R0_4, (__m256i) R1_4);
+            R1_4 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_4 = (__m256d) _mm256_and_si256((__m256i) R0_4, (__m256i) R1_4);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_4);
+
+            // Itr 6
+            R0_5 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_5 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_5 = (__m256d) _mm256_and_si256((__m256i) R0_5, (__m256i) R1_5);
+            R1_5 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_5 = (__m256d) _mm256_and_si256((__m256i) R0_5, (__m256i) R1_5);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_5);
+
+            // Itr 7
+            R0_6 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_6 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_6 = (__m256d) _mm256_and_si256((__m256i) R0_6, (__m256i) R1_6);
+            R1_6 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_6 = (__m256d) _mm256_and_si256((__m256i) R0_6, (__m256i) R1_6);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_6);
+
+            // Itr 8
             #if DEBUG
-            printf("%d %d %d\n", r * cols + (c + 2) * SIMD_N_ELEM - 1, r * cols + (c + 2) * SIMD_N_ELEM, r * cols + (c + 2) * SIMD_N_ELEM + 1);
+            // printf("%d %d %d\n", r * cols + (c + 2) * SIMD_N_ELEM - 1, r * cols + (c + 2) * SIMD_N_ELEM, r * cols + (c + 2) * SIMD_N_ELEM + 1);
             #endif
-            LD0_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 2) * SIMD_N_ELEM - 1);
-            LD1_0 = _mm256_load_pd(in + r * cols + (c + 2) * SIMD_N_ELEM);
-            ND0_0 = (__m256d) _mm256_and_si256((__m256i) LD0_0, (__m256i) LD1_0);
-            LD2_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 2) * SIMD_N_ELEM + 1);
-            ND1_0 = (__m256d) _mm256_and_si256((__m256i) ND0_0, (__m256i) LD2_0);
-            _mm256_store_pd(out + r * cols + (c + 2) * SIMD_N_ELEM, ND1_0);
+            R0_7 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
+            R1_7 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
+            R0_7 = (__m256d) _mm256_and_si256((__m256i) R0_7, (__m256i) R1_7);
+            R1_7 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
+            R0_7 = (__m256d) _mm256_and_si256((__m256i) R0_7, (__m256i) R1_7);
+            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, R0_7);
 
-            c+= R_BATCHES;
-
-            // Itr 1
-            LD0_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
-            LD1_1 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
-            ND0_1 = (__m256d) _mm256_and_si256((__m256i) LD0_1, (__m256i) LD1_1);
-            LD2_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
-            ND1_1 = (__m256d) _mm256_and_si256((__m256i) ND0_1, (__m256i) LD2_1);
-            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, ND1_1);
-
-            // Itr 2
-            LD0_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 1) * SIMD_N_ELEM - 1);
-            LD1_2 = _mm256_load_pd(in + r * cols + (c + 1) * SIMD_N_ELEM);
-            ND0_2 = (__m256d) _mm256_and_si256((__m256i) LD0_2, (__m256i) LD1_2);
-            LD2_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 1) * SIMD_N_ELEM + 1);
-            ND1_2 = (__m256d) _mm256_and_si256((__m256i) ND0_2, (__m256i) LD2_2);
-            _mm256_store_pd(out + r * cols + (c + 1) * SIMD_N_ELEM, ND1_2);
-
-            // Itr 3
-            #if DEBUG
-            printf("%d %d %d\n", r * cols + (c + 2) * SIMD_N_ELEM - 1, r * cols + (c + 2) * SIMD_N_ELEM, r * cols + (c + 2) * SIMD_N_ELEM + 1);
-            #endif
-            LD0_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 2) * SIMD_N_ELEM - 1);
-            LD1_0 = _mm256_load_pd(in + r * cols + (c + 2) * SIMD_N_ELEM);
-            ND0_0 = (__m256d) _mm256_and_si256((__m256i) LD0_0, (__m256i) LD1_0);
-            LD2_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 2) * SIMD_N_ELEM + 1);
-            ND1_0 = (__m256d) _mm256_and_si256((__m256i) ND0_0, (__m256i) LD2_0);
-            _mm256_store_pd(out + r * cols + (c + 2) * SIMD_N_ELEM, ND1_0);
-
-            c+= R_BATCHES;
-
-            // Itr 1
-            LD0_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM - 1);
-            LD1_1 = _mm256_load_pd(in + r * cols + (c + 0) * SIMD_N_ELEM);
-            ND0_1 = (__m256d) _mm256_and_si256((__m256i) LD0_1, (__m256i) LD1_1);
-            LD2_1 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 0) * SIMD_N_ELEM + 1);
-            ND1_1 = (__m256d) _mm256_and_si256((__m256i) ND0_1, (__m256i) LD2_1);
-            _mm256_store_pd(out + r * cols + (c + 0) * SIMD_N_ELEM, ND1_1);
-
-            // Itr 2
-            LD0_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 1) * SIMD_N_ELEM - 1);
-            LD1_2 = _mm256_load_pd(in + r * cols + (c + 1) * SIMD_N_ELEM);
-            ND0_2 = (__m256d) _mm256_and_si256((__m256i) LD0_2, (__m256i) LD1_2);
-            LD2_2 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 1) * SIMD_N_ELEM + 1);
-            ND1_2 = (__m256d) _mm256_and_si256((__m256i) ND0_2, (__m256i) LD2_2);
-            _mm256_store_pd(out + r * cols + (c + 1) * SIMD_N_ELEM, ND1_2);
-
-            // Itr 3
-            #if DEBUG
-            printf("%d %d %d\n", r * cols + (c + 2) * SIMD_N_ELEM - 1, r * cols + (c + 2) * SIMD_N_ELEM, r * cols + (c + 2) * SIMD_N_ELEM + 1);
-            #endif
-            LD0_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 2) * SIMD_N_ELEM - 1);
-            LD1_0 = _mm256_load_pd(in + r * cols + (c + 2) * SIMD_N_ELEM);
-            ND0_0 = (__m256d) _mm256_and_si256((__m256i) LD0_0, (__m256i) LD1_0);
-            LD2_0 = (__m256d) _mm256_lddqu_si256(in + r * cols + (c + 2) * SIMD_N_ELEM + 1);
-            ND1_0 = (__m256d) _mm256_and_si256((__m256i) ND0_0, (__m256i) LD2_0);
-            _mm256_store_pd(out + r * cols + (c + 2) * SIMD_N_ELEM, ND1_0);
             
             #if DEBUG
             printf("loop load\n");
@@ -284,20 +294,19 @@ inline void rows_kernel
         #if DEBUG
         printf("%d %d\n", (r+1) * cols - SIMD_N_ELEM - 1, (r+1) * cols - SIMD_N_ELEM);
         #endif
-        LD0_0 = _mm256_load_pd(in + (r+1) * cols - SIMD_N_ELEM); // Aligned load
-        LD1_0 = (__m256d) _mm256_lddqu_si256(in + (r+1) * cols - SIMD_N_ELEM - 1); // Unligned load
-        ND0_0 = (__m256d) _mm256_permute2x128_si256((__m256i) LD0_0, (__m256i) LD0_0, _MM_SHUFFLE(2, 0, 0, 1)); // Step 1 of bitshift
-        ND1_0 = (__m256d) _mm256_and_si256((__m256i) LD0_0, (__m256i) LD1_0);
-        ND0_0 = (__m256d) _mm256_alignr_epi8((__m256i) ND0_0, (__m256i) LD0_0, 1); // Step 2 if bitshift LEFFT
-        ND0_0 = (__m256d) _mm256_and_si256((__m256i) ND0_0, (__m256i) ND1_0);
-        _mm256_store_pd(out + (r+1) * cols - SIMD_N_ELEM, ND0_0);
+        R0_0 = _mm256_load_pd(in + (r+1) * cols - SIMD_N_ELEM); // Aligned load
+        R1_0 = (__m256d) _mm256_lddqu_si256(in + (r+1) * cols - SIMD_N_ELEM - 1); // Unligned load
+        R0_1 = (__m256d) _mm256_permute2x128_si256((__m256i) R0_0, (__m256i) R0_0, _MM_SHUFFLE(2, 0, 0, 1)); // Step 1 of bitshift
+        R1_1 = (__m256d) _mm256_and_si256((__m256i) R0_0, (__m256i) R1_0);
+        R0_1 = (__m256d) _mm256_alignr_epi8((__m256i) R0_1, (__m256i) R0_0, 1); // Step 2 if bitshift LEFFT
+        R0_1 = (__m256d) _mm256_and_si256((__m256i) R0_1, (__m256i) R1_1);
+        _mm256_store_pd(out + (r+1) * cols - SIMD_N_ELEM, R0_1);
         
         #if DEBUG
         printf("last load\n");
         #endif
 
     }
-
 }
 
 /*
@@ -321,6 +330,11 @@ inline void pack
         int col = addr%cols;
         return row*SIMD_N_ELEM + col*rows;
     }
+
+    #if DEBUG
+    printf("\n\nDebugging Packing Kernel\n\n");
+    printf("Rows: %d\nCols: %d\nSIMD_N_ELEN: %d\n\n", rows, cols,SIMD_N_ELEM);
+    #endif
 
     volatile __m256d ymm0 = _mm256_setzero_pd();
     volatile __m256d ymm1 = _mm256_setzero_pd();
@@ -417,6 +431,11 @@ inline void unpack
         return row*cols + col;
     }
 
+    #if DEBUG
+    printf("\n\nDebugging Unpacking Kernel\n\n");
+    printf("Rows: %d\nCols: %d\nSIMD_N_ELEN: %d\n\n", rows, cols,SIMD_N_ELEM);
+    #endif
+
     volatile __m256d ymm0 = _mm256_setzero_pd();
     volatile __m256d ymm1 = _mm256_setzero_pd();
     volatile __m256d ymm2 = _mm256_setzero_pd();
@@ -487,40 +506,5 @@ inline void unpack
         printf("read: %2d\twrite:%2d\n", (idx + 14*SIMD_N_ELEM)/*/SIMD_N_ELEM*/, addrConv(rows, cols, idx + 14*SIMD_N_ELEM)/*/SIMD_N_ELEM*/);
         printf("read: %2d\twrite:%2d\n", (idx + 15*SIMD_N_ELEM)/*/SIMD_N_ELEM*/, addrConv(rows, cols, idx + 15*SIMD_N_ELEM)/*/SIMD_N_ELEM*/);
         #endif
-    }
-}
-
-/*
-    Makes a dimension divisible by the smallest increment in which it can be read, that way columns and rows are properly memory aligned in an image without pow(n,2) columns
-*/
-inline int make_divisible
-(
-    int base,
-    int min
-) {
-    // TODO
-}
-
-inline void test_bitshift (int8_t* restrict in) {
-    __m256d LN0_0;
-    LN0_0 = _mm256_load_pd(in);
-    
-    int binary(int in) {
-        return (in % 2) + 10*(((unsigned int) in/2)%2) +  100*(((unsigned int) in/4)%2) +  1000*(((unsigned int) in/8)%2) +  10000*(((unsigned int) in/16)%2) +  100000*(((unsigned int) in/32)%2) +  1000000*(((unsigned int) in/64)%2) +  10000000*(((unsigned int) in/128)%2);
-    }
-
-    for (int i = 0; i < 32; i++) {
-        printf("%8d", binary(in[i]));
-    }
-    printf("\n");
-
-    //shifts "right", element 0 is zeroed
-    // LN0_0 = (__m256d) _mm256_alignr_epi8((__m256i) LN0_0, _mm256_permute2x128_si256((__m256i) LN0_0, (__m256i) LN0_0, _MM_SHUFFLE(0, 0, 2, 0)), 16 - 1);
-    // shifts "left", rightmost element is zeroed
-    LN0_0 = (__m256d) _mm256_alignr_epi8(_mm256_permute2x128_si256((__m256i) LN0_0, (__m256i) LN0_0, _MM_SHUFFLE(2, 0, 0, 1)), (__m256i) LN0_0, 1);
-
-    _mm256_store_pd(in, LN0_0);
-    for (int i = 0; i < 32; i++) {
-        printf("%8d", binary(in[i]));
     }
 }

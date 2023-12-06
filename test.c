@@ -1,25 +1,32 @@
 // #include <opencv2/core.hpp> // to be able to use Mat class
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "immintrin.h"
 
-#include "morph_kernel.h"
+#include "morph_kernel.c"
 
 #define BATCH (4) // the number of SIMD reads per iteration
 #define D_WIDTH (8)
 #define SIMD_N_ELEM (256/D_WIDTH) // the number of addresses to step for each SIMD read
 
-#define ROWS 512
-#define COLS 8*SIMD_N_ELEM
+#define ROWS 16
+#define COLS 16*SIMD_N_ELEM
 
 #define RUNS 1000000
-#define DEBUG 1
-#define PRINTMAT 0
 
 #define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
+
+#define RUN_ROW
+#define RUN_PACK
+#define RUN_COL
+#define RUN_UNPACK
+
+#define DEBUG 1
+// #define PRINTMAT
 
 //timing routine for reading the time stamp counter
 static __inline__ unsigned long long rdtsc(void) {
@@ -36,6 +43,10 @@ bool check(int8_t* a, int8_t* b) {
 }
 
 int main(int argc, char** argv) {
+    // make sure that minimums are met for image
+    assert(ROWS >= 16);
+    assert(COLS >= 1);
+
     int8_t *in, *out, *buff;
 
     posix_memalign((void**) &in, 64, ROWS * COLS * sizeof(int8_t));
@@ -61,13 +72,13 @@ int main(int argc, char** argv) {
     unsigned long long t0, t1;
     unsigned long long timer;
 
-    #if PRINTMAT
+    #ifdef PRINTMAT
     printf("Unpacked Input:\n");
     mat_print(COLS, ROWS, in);
     printf("\n\n");
     #endif
 
-    #if 0
+    #ifdef RUN_ROW
     // Benchmark Horizontal Kernel
     {
         timer = ~0;
@@ -80,15 +91,18 @@ int main(int argc, char** argv) {
         }
         printf("Horizontal Efficiency: %f\n", (double) (BASE_FREQ*3/2*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
     }
+    #else
+    for (int i = 0; i < ROWS*COLS; i++)
+        out[i] = in[i];
     #endif
 
-    #if PRINTMAT
+    #ifdef PRINTMAT
     printf("Hor. Output:\n");
     mat_print(COLS, ROWS, out);
     printf("\n\n");
     #endif
 
-    #if 0
+    #ifdef RUN_PACK
     // Benchmark packing
     timer = ~0;
     pack: for (int i = 0; i < RUNS; i++) {
@@ -99,15 +113,18 @@ int main(int argc, char** argv) {
         timer = ((t1-t0) < timer) ? t1-t0 : timer;
     }
     printf("Packing Efficiency: %f\n", (double) (BASE_FREQ*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
+    #else
+    for (int i = 0; i < ROWS*COLS; i++)
+        buff[i] = out[i];
     #endif
     
-    #if PRINTMAT
+    #ifdef PRINTMAT
     printf("Packed Input:\n");
     mat_print(ROWS*SIMD_N_ELEM,COLS/SIMD_N_ELEM, buff);
     printf("\n\n");
     #endif
 
-    #if 1
+    #ifdef RUN_COL
     // Benchmark Vertical Kernel
     timer = ~0;
     cols: for (int i = 0; i < RUNS; i++) {
@@ -120,14 +137,13 @@ int main(int argc, char** argv) {
     printf("Vertical Efficiency: %f\n", (double) (BASE_FREQ*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
     #endif
 
-    #if PRINTMAT
+    #ifdef PRINTMAT
     printf("Packed Output:\n");
     mat_print(ROWS*SIMD_N_ELEM,COLS/SIMD_N_ELEM,buff);
     printf("\n\n");
     #endif
     
-    #if 0
-    unpack(COLS, ROWS, buff, out);
+    #ifdef RUN_UNPACK
     // Benchmark unpacking
     timer = ~0;
     upack: for (int i = 0; i < RUNS; i++) {
@@ -138,9 +154,12 @@ int main(int argc, char** argv) {
         timer = ((t1-t0) < timer) ? t1-t0 : timer;
     }
     printf("Unpacking Efficiency: %f\n", (double) (BASE_FREQ*ROWS*COLS/SIMD_N_ELEM)/(MAX_FREQ*timer));
+    #else
+    for (int i = 0; i < ROWS*COLS; i++)
+        out[i] = buff[i];
     #endif
 
-    #if PRINTMAT
+    #ifdef PRINTMAT
     printf("Unpacked Output:\n");
     mat_print(COLS,ROWS,out);
     printf("\n\n");
