@@ -29,12 +29,12 @@
 #define BASE_FREQ 2.4
 
 #define RUN_ROW
-#define RUN_PACK
+// #define RUN_PACK
 #define RUN_COL
-#define RUN_UNPACK
+// #define RUN_UNPACK
 
 #define DEBUG 1
-#define PRINTMAT
+// #define PRINTMAT
 
 //timing routine for reading the time stamp counter
 static __inline__ unsigned long long rdtsc(void) {
@@ -51,14 +51,25 @@ bool check(int8_t* a, int8_t* b) {
 }
 
 int main(int argc, char** argv) {
+    //////////////////////////////////
+    // Parallelization
+    //////////////////////////////////
+    // Divide optimally
+    MPI_Init(&argc, &argv);
+    int world_size, world_rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+    int root = 0;
+    // Do all initialization on root
+    if (world_rank == root) {
+
+    }
+
     // make sure that minimums are met for image
     assert(COLS >= SIMD_N_ELEM);
 
-    // Print out image size
-    printf("Image size: %d Bytes\n",ROWS*COLS);
-
     int8_t *in, *out, *buff;
-
     posix_memalign((void**) &in, 64, ROWS * COLS * sizeof(int8_t));
     posix_memalign((void**) &out, 64, ROWS  * COLS * sizeof(int8_t));
     posix_memalign((void**) &buff, 64, ROWS  * COLS * sizeof(int8_t));
@@ -82,6 +93,7 @@ int main(int argc, char** argv) {
     unsigned long long t0, t1;
     unsigned long long timer;
 
+    
     #ifdef PRINTMAT
     printf("Unpacked Input:\n");
     mat_print(COLS, ROWS, in);
